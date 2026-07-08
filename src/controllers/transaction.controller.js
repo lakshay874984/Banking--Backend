@@ -49,12 +49,25 @@ async function createTransaction(req, res) {
         }
         if(existingTransaction.status === "REVERSED"){
             return res.status(500).json({message:"Transaction has already been reversed", transaction:existingTransaction})
-
+        }
     }
 
-     
-     
+    /**
+     * check account status of both accounts to ensure that they are ACTIVE. If either account is not ACTIVE, return a 400 Bad Request response.
+     */
 
+    if(fromUserAccount.status !== "ACTIVE" || toUserAccount.status !== "ACTIVE"){
+        return res.status(400).json({message:"One or both accounts are not active"})
+    }
+
+
+    /**
+     *  Derive sender balance from ledger
+     */
+    const balance = fromUserAccount.getBalance(W)
+    if(balance < amount){
+        res.status(400).json({message:"insuffiecient balance"},amount,balance)
+    }
 
 
 
