@@ -1,7 +1,9 @@
+const { mongoose } = require("mongoose")
 const Account = require("../models/account.model")
 const Ledger = require("../models/ledger.model")
 const Transaction = require("../models/transaction.model")
 const { sendEmail , sendTransactionEmail,sendTransactionFailureEmail } = require("../services/email.service")
+
 
 
 /**
@@ -90,8 +92,8 @@ async function createTransaction(req, res) {
    session.startTransaction()  // Start a new transaction session which means that all operations performed within this session will be part of a single transaction. If any operation fails, the entire transaction can be rolled back to maintain data integrity.
     const transaction = await Transaction.create([{fromAccount,toAccount,amount,idempotencyKey,status:"PENDING"}],{session})
 
-    const debitLedgerEntry = await Ledger.create({account : fromAccount, type:"DEBIT", amount, transaction : transaction[0]._id},{session})
-    const creditLedgerEntry = await Ledger.create({account : toAccount, type:"CREDIT", amount, transaction:transaction[0]._id},{session})
+    const debitLedgerEntry = await Ledger.create([{account : fromAccount, type:"DEBIT", amount, transaction : transaction[0]._id}],{session})
+    const creditLedgerEntry = await Ledger.create([{account : toAccount, type:"CREDIT", amount, transaction:transaction[0]._id}],{session})
 
 
     transaction[0].status = "SUCCESS"
@@ -129,9 +131,10 @@ async function createIntialFundsTransaction(req,res) {
         })
     }
     const fromUserAccount = await Account.findOne({
-        systemUser : true,
         user : req.user._id
     })
+
+    console.log(req.user,fromUserAccount)
 
     if(!fromUserAccount){
         return res.status(400).json({
@@ -141,33 +144,34 @@ async function createIntialFundsTransaction(req,res) {
 
     const session = await mongoose.startSession()
     session.startTransaction()
-    const transaction = await Transaction.create({
+    const transaction = new Transaction({
         fromAccount : fromUserAccount._id,
         toAccount,
         amount,
         idempotencyKey,
         status : "PENDING"
 
-    },{session})
+    }) // diff between create and new is that create will save the document to the database immediately while new will create a new instance of the model but will not save it to the database until you call save() method on it.
 
-    const debitLedgerEntry =  await Ledger.create({
+    const debitLedgerEntry =  await Ledger.create([{
         account : fromUserAccount._id,
         amount : amount,
         transaction : transaction._id,
         type:"DEBIT"
-    },{session})
-    const creditLedgerEntry =  await Ledger.create({
+    }],{session})
+    const creditLedgerEntry =  await Ledger.create([{
         account : toAccount,
         amount : amount,
         transaction : transaction._id,
         type:"CREDIT"
-    },{session})
+    }],{session})
 
     transaction.status = "SUCCESS"
     await transaction.save({session})
 
     await session.commitTransaction()
-    session.endSessio(201).json({
+    session.endSession()
+    return res.status(201).json({
         message : "Intial funds transaction completed successfully",
         transaction : transaction
     })
