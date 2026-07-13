@@ -20,6 +20,13 @@ const userSchema = new mongoose.Schema({
         name : {
             type : String,
             required : [true,"name is required"]
+        },
+        systemUser : {
+            type:Boolean ,
+            default:false,
+            immutable:true,
+            select:false
+
         }
         
 },{timestamps : true})

@@ -1,10 +1,23 @@
 const Account = require("../models/account.model")
 const Ledger = require("../models/ledger.model")
 const Transaction = require("../models/transaction.model")
-const { sendEmail } = require("../services/email.service")
+const { sendEmail , sendTransactionEmail,sendTransactionFailureEmail } = require("../services/email.service")
 
 
-
+/**
+ * * - create a new transaction 
+ * The 10-step TRANSFER FLOW
+ * 1 . validate request 
+ * 2 . validate idempotency key
+ * 3 . check account status
+ * 4 . derive sender balance from ledger
+ * 5 . create transaction (PENDING)
+ * 6 . create ledger entries (DEBIT and CREDIT)
+ * 7 . update transaction status (SUCCESS)
+ * 8 . commit transaction
+ * 9 . send email notification to both users about the transaction
+ * 10. return response
+ */
 
 
 
@@ -90,12 +103,73 @@ async function createTransaction(req, res) {
     /** 
      * send email notification to both users about the transaction. This is done asynchronously and does not affect the transaction process.
      */
-    sendEmail(fromUserAccount.user,"Transaction Successful",`You have successfully transferred ${amount} to account ${toAccount}`)
-    sendEmail(toUserAccount.user,"Transaction Successful",`You have successfully received ${amount} from account ${fromAccount}`)
-     
+    await sendTransactionEmail(req.user.email, req.user.name, amount, fromUserAccount, toUserAccount);
+
+    return res.status(200).json({message:"Transaction successful", transaction:transaction[0]})
 
 
 
 
 } 
-module.exports = {createTransaction}
+
+async function createIntialFundsTransaction(req,res) {
+    const {toAccount,amount,idempotencyKey} = req.body
+
+    if(!toAccount || !amount || !idempotencyKey){
+        return res.status(400).json({
+            message : "toAccount,amount and idempotencyKey are required"
+        })
+    }
+    const toUserAccount =  await Account.findOne({
+        _id : toAccount,
+    })
+    if(!toUserAccount){
+        return res.status(400).json({
+            message : "Invalid toAccount"
+        })
+    }
+    const fromUserAccount = await Account.findOne({
+        systemUser : true,
+        user : req.user._id
+    })
+
+    if(!fromUserAccount){
+        return res.status(400).json({
+            message : "System user account not found"
+        })
+    }
+
+    const session = await mongoose.startSession()
+    session.startTransaction()
+    const transaction = await Transaction.create({
+        fromAccount : fromUserAccount._id,
+        toAccount,
+        amount,
+        idempotencyKey,
+        status : "PENDING"
+
+    },{session})
+
+    const debitLedgerEntry =  await Ledger.create({
+        account : fromUserAccount._id,
+        amount : amount,
+        transaction : transaction._id,
+        type:"DEBIT"
+    },{session})
+    const creditLedgerEntry =  await Ledger.create({
+        account : toAccount,
+        amount : amount,
+        transaction : transaction._id,
+        type:"CREDIT"
+    },{session})
+
+    transaction.status = "SUCCESS"
+    await transaction.save({session})
+
+    await session.commitTransaction()
+    session.endSessio(201).json({
+        message : "Intial funds transaction completed successfully",
+        transaction : transaction
+    })
+}
+module.exports = {createTransaction,createIntialFundsTransaction}
