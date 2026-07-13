@@ -66,15 +66,36 @@ async function createTransaction(req, res) {
      */
     const balance = fromUserAccount.getBalance(W)
     if(balance < amount){
-        res.status(400).json({message:"insuffiecient balance"},amount,balance)
+        return res.status(400).json({message:"insufficient balance"},amount,balance)
     }
 
+   /**
+    *  Create transaction (PENDING)
+    */
+
+   const session = await Transaction.startSession()
+   session.startTransaction()  // Start a new transaction session which means that all operations performed within this session will be part of a single transaction. If any operation fails, the entire transaction can be rolled back to maintain data integrity.
+    const transaction = await Transaction.create([{fromAccount,toAccount,amount,idempotencyKey,status:"PENDING"}],{session})
+
+    const debitLedgerEntry = await Ledger.create({account : fromAccount, type:"DEBIT", amount, transaction : transaction[0]._id},{session})
+    const creditLedgerEntry = await Ledger.create({account : toAccount, type:"CREDIT", amount, transaction:transaction[0]._id},{session})
+
+
+    transaction[0].status = "SUCCESS"
+    await transaction[0].save({session})
+
+    await session.commitTransaction() // Commit the transaction, making all changes permanent in the database.  
+    session.endSession() // End the transaction session, releasing any resources associated with it.
+
+    /** 
+     * send email notification to both users about the transaction. This is done asynchronously and does not affect the transaction process.
+     */
+    sendEmail(fromUserAccount.user,"Transaction Successful",`You have successfully transferred ${amount} to account ${toAccount}`)
+    sendEmail(toUserAccount.user,"Transaction Successful",`You have successfully received ${amount} from account ${fromAccount}`)
+     
 
 
 
 
-
-
-
-}
+} 
 module.exports = {createTransaction}
