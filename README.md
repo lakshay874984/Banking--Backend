@@ -90,6 +90,3 @@ The server will run on port `3000` by default.
 - Email delivery requires valid Gmail OAuth credentials configured in the environment variables.
 - This project is intended as a backend foundation and can be extended with features such as role-based access control, payment limits, and transaction history dashboards.
 
-## License
-
-This project is licensed under the ISC license.
