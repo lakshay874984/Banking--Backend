@@ -91,27 +91,36 @@ async function createTransaction(req, res) {
     try {
         const session = await Transaction.startSession()
         session.startTransaction()  // Start a new transaction session which means that all operations performed within this session will be part of a single transaction. If any operation fails, the entire transaction can be rolled back to maintain data integrity.
-        transaction = await Transaction.create([{ fromAccount, toAccount, amount, idempotencyKey, status: "PENDING" }], { session })
+        transaction = (await Transaction.create([{ fromAccount, toAccount, amount, idempotencyKey, status: "PENDING" }], { session }))[0]
+        /*because it return an array [
+  {
+    fromAccount: new ObjectId('6a57192c0cd0adca757840c6'),
+    toAccount: new ObjectId('6a549e3faae1dd4560544d0e'),
+    status: 'PENDING',
+    amount: 200,
+    idempotencyKey: 'fheyhowarejjjbjyouhvhjvhjvllgglcccclaaaaagggggaaaaa',
+    _id: new ObjectId('6a575b8205c6192ac8a30cbc'),
+    createdAt: 2026-07-15T10:05:54.450Z,
+    updatedAt: 2026-07-15T10:05:54.450Z,
+    __v: 0
+  }
+]*/
+        console.log(transaction)
 
         const debitLedgerEntry = await Ledger.create([{ account: fromAccount, type: "DEBIT", amount, transaction: transaction._id }], { session })
-        const wait15Seconds = new Promise((resolve) => {
-            setTimeout(() => {
-                resolve("15 seconds have passed!");
-            }, 15000);
-        });
-
-        // Using the promise
-        wait15Seconds.then((message) => {
-            console.log(message);
-        });
+        await (() => {
+            return new Promise((resolve) => setTimeout(resolve, 10 * 1000));
+        })() //tp create a scenario where we assume that amount is debited but not credited due to any reason
 
         const creditLedgerEntry = await Ledger.create([{ account: toAccount, type: "CREDIT", amount, transaction: transaction._id }], { session })
 
         await Transaction.findOneAndUpdate({
-            _id: transaction._id
-        }, { status: "COMPLETED" }, {
+            _id: transaction._id //quesry
+        }, { status: "COMPLETED" } //update
+        , {
             session
-        })
+        }) //Model.findOneAndUpdate( query, update, options )
+
 
 
         transaction.status = "SUCCESS"
@@ -121,7 +130,8 @@ async function createTransaction(req, res) {
         session.endSession() // End the transaction session, releasing any resources associated with it.
     }
     catch (error) {
-        res.status(400).json({ message: "Transaction i already in progress" })
+        res.status(400).json({ message: "Transaction is already in progress" ,error:error.message})
+        // if anyone try to again send the money with the same idempotencykey it will show an error that transassction is aready in progress
     }
     /** 
      * send email notification to both users about the transaction. This is done asynchronously and does not affect the transaction process.
@@ -172,7 +182,7 @@ async function createIntialFundsTransaction(req, res) {
         idempotencyKey,
         status: "PENDING"
 
-    }) // diff between create and new is that create will save the document to the database immediately while new will create a new instance of the model but will not save it to the database until you call save() method on it.
+    }) // diff between create and new is that create will save the document to the database immediately while new will create a new instance of the model but will not save it to the database until you call save() method on it.and we are doing this because we want only to save trascation in our database when its completed
 
 
     const creditLedgerEntry = await Ledger.create([{
