@@ -2,6 +2,8 @@
 const jwt  = require("jsonwebtoken");
 const User = require("../models/user.model");
 const emailService = require("../services/email.service");
+const tokenBlacklistModel = require("../models/blacklistmodel");
+
 
 
 /** 
@@ -48,5 +50,35 @@ async function UserLoginController(req,res){
 
     
 }
+/*
+* - User Logout Controller
+* - Post /api/auth/logout
+* */
 
-module.exports = {UserRegisterController,UserLoginController}
+async function UserLogoutController(req,res){
+    const token  =  req.cookies.token || req.headers.authorization?.split(" ")[1]
+
+    if(!token){
+        res.status(400).json({
+            message:"user logout succesfully"
+        })
+    }
+    res.clearCookie('token', {
+    httpOnly: true,
+    secure: true,   // Use true if your site uses HTTPS
+    sameSite: 'strict'
+  });
+
+  await tokenBlacklistModel.create({
+    token : token
+  })
+
+  res.status(200).json({
+    message : "User logout succesfully"
+  })
+  
+
+}
+
+module.exports = {UserRegisterController,UserLoginController,UserLogoutController
+}
